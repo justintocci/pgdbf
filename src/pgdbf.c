@@ -31,7 +31,7 @@
 
 #include "pgdbf.h"
 
-#define STANDARDOPTS "cCdDeEhm:nNpPqQrRtTuU"
+#define STANDARDOPTS "cCdDeEhm:nNpPqQrRtTuUx:"
 
 int main(int argc, char **argv) {
     /* Describing the DBF file */
@@ -112,6 +112,7 @@ int main(int argc, char **argv) {
     /* Describing the PostgreSQL table */
     char *tablename;
     char *baretablename;
+    char *explicittablename;
     char (*fieldnames)[MAXCOLUMNNAMESIZE];
     int isuniquename;
     char basename[MAXCOLUMNNAMESIZE];
@@ -156,6 +157,9 @@ int main(int argc, char **argv) {
             break;
         case 'm':
             memofilename = optarg;
+            break;
+        case 'x':
+            explicittablename = optarg;
             break;
         case 'n':
             optnumericasnumeric = 1;
@@ -218,9 +222,9 @@ int main(int argc, char **argv) {
     if(optexitcode != -1) {
         printf(
 #if defined(HAVE_ICONV)
-               "Usage: %s [-cCdDeEhtTuU] [-s encoding] [-m memofilename] filename [indexcolumn ...]\n"
+               "Usage: %s [-cCdDeEhtTuUx] [-s encoding] [-m memofilename] filename [indexcolumn ...]\n"
 #else
-               "Usage: %s [-cCdDeEhtTuU] [-m memofilename] filename [indexcolumn ...]\n"
+               "Usage: %s [-cCdDeEhtTuUx] [-x explicit_tablename] [-m memofilename] filename [indexcolumn ...]\n"
 #endif
                "Convert the named XBase file into PostgreSQL format\n"
                "\n"
@@ -240,6 +244,7 @@ int main(int argc, char **argv) {
                "  -P  do not show a progress bar\n"
                "  -q  enclose the table name in quotation marks whenever used in statements\n"
                "  -Q  do not enclose the table name in quotation marks (default)\n"
+               "  -x  the name to use for the table instead of the file name\n"
 #if defined(HAVE_ICONV)
                "  -s  the encoding used in the file, to be converted to UTF-8\n"
 #endif
@@ -288,34 +293,35 @@ int main(int argc, char **argv) {
 
     /* Calculate the table's name based on the DBF filename */
     dbffilename = argv[optind];
-    tablename = malloc(strlen(dbffilename) + 1);
-    if(tablename == NULL) {
-        exitwitherror("Unable to allocate the tablename buffer", 1);
-    }
-    /* The "bare" version of the tablename is the one used by itself in
-     * lines line CREATE TABLE [...], etc. Compare this with tablename which
-     * is used for other things, like creating the names of indexes. Despite
-     * its name, baretablename may be surrounded by quote marks if the "-q"
-     * option for optusequotedtablename is given. */
-    baretablename = malloc(strlen(dbffilename) + 1 + optusequotedtablename * 2);
-    if(baretablename == NULL) {
-        exitwitherror("Unable to allocate the bare tablename buffer", 1);
-    }
-    /* Find the first character after the final slash, or the first
-     * character of the filename if no slash is present, and copy from that
-     * point to the period in the extension into the tablename string. */
-    for(s = dbffilename + strlen(dbffilename) - 1; s != dbffilename; s--) {
-        if(*s == '/') {
-            s++;
-            break;
+        tablename = malloc(strlen(dbffilename) + 1);
+        if(tablename == NULL) {
+            exitwitherror("Unable to allocate the tablename buffer", 1);
         }
-    }
-    /* Create tablename and baretablename at the same time. */
-    t = tablename;
-    u = baretablename;
+        /* The "bare" version of the tablename is the one used by itself in
+         * lines line CREATE TABLE [...], etc. Compare this with tablename which
+         * is used for other things, like creating the names of indexes. Despite
+         * its name, baretablename may be surrounded by quote marks if the "-q"
+         * option for optusequotedtablename is given. */
+        baretablename = malloc(strlen(dbffilename) + 1 + optusequotedtablename * 2);
+        if(baretablename == NULL) {
+            exitwitherror("Unable to allocate the bare tablename buffer", 1);
+        }
+        /* Find the first character after the final slash, or the first
+         * character of the filename if no slash is present, and copy from that
+         * point to the period in the extension into the tablename string. */
+        for(s = dbffilename + strlen(dbffilename) - 1; s != dbffilename; s--) {
+            if(*s == '/') {
+                s++;
+                break;
+            }
+        }
+        /* Create tablename and baretablename at the same time. */
+        t = tablename;
+        u = baretablename;
     if(optusequotedtablename) *u++ = '"';
+    if (explicittablename != NULL) s = explicittablename;
     while(*s) {
-        if(*s == '.') {
+        if(strncmp(s, ".dbf", 5) == 0) {
             break;
         }
         *t = tolower(*s++);
